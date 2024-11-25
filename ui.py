@@ -73,39 +73,7 @@ app.layout = html.Div(
                         ),
                     ],
                     style={'display': 'flex', 'alignItems': 'center', 'marginTop': '10px'}
-                ),
-
-                # Sort options
-                html.Div(
-                    children=[
-                        html.Label("Sort By:", style={'marginRight': '10px'}),
-                        dcc.Dropdown(
-                            id='sort-by',
-                            options=[
-                                {'label': 'Title', 'value': 'episode_title'},
-                                {'label': 'Release Date', 'value': 'air_date'},
-                                {'label': 'Rating', 'value': 'rating'},
-                            ],
-                            placeholder="Select sorting criteria",
-                            style={'width': '200px', 'marginRight': '20px'}
-                        ),
-                        dcc.RadioItems(
-                            id='sort-order',
-                            options=[
-                                {'label': 'Ascending', 'value': 'ASC'},
-                                {'label': 'Descending', 'value': 'DESC'}
-                            ],
-                            value='ASC',
-                            style={'display': 'inline-block'}
-                        )
-                    ],
-                    style={'display': 'flex', 'alignItems': 'center', 'marginTop': '10px'}
-                ),
-
-                # Apply filters button
-                html.Button("Apply Filters", id='apply-filters', n_clicks=0, style={
-                    'marginTop': '10px', 'backgroundColor': '#3498db', 'color': 'white', 'border': 'none', 'padding': '10px 20px', 'cursor': 'pointer'
-                })
+                )
             ]
         ),
 
@@ -116,13 +84,13 @@ app.layout = html.Div(
                     id='results-table',
                     columns=[
                         {"name": "Show", "id": "show"},
-                        {"name": "Season", "id": "season"},
-                        {"name": "Episode", "id": "episode"},
                         {"name": "Title", "id": "episode_title"},
-                        {"name": "Air Date", "id": "air_date"},
                         {"name": "Rating", "id": "rating"},
                         {"name": "Votes", "id": "votes"},
                         {"name": "Plot", "id": "plot"},
+                        {"name": "Air Date", "id": "air_date"},
+                        {"name": "Season", "id": "season"},
+                        {"name": "Episode", "id": "episode"},
                     ],
                     style_table={'overflowX': 'auto'},
                     style_cell={
@@ -137,6 +105,7 @@ app.layout = html.Div(
                     },
                     style_data={'backgroundColor': '#ecf0f1', 'color': '#2c3e50'},
                     page_size=20,
+                    sort_action="native",  # Enable native sorting by clicking column headers
                 )
             ]
         )
@@ -146,16 +115,13 @@ app.layout = html.Div(
 # Callbacks
 @app.callback(
     Output('results-table', 'data'),
-    Input('apply-filters', 'n_clicks'),
-    State('search-title', 'value'),
-    State('filter-show', 'value'),
-    State('filter-date', 'start_date'),
-    State('filter-date', 'end_date'),
-    State('filter-rating', 'value'),
-    State('sort-by', 'value'),
-    State('sort-order', 'value')
+    Input('search-title', 'value'),
+    Input('filter-show', 'value'),
+    Input('filter-date', 'start_date'),
+    Input('filter-date', 'end_date'),
+    Input('filter-rating', 'value')
 )
-def update_table(n_clicks, search_title, filter_show, start_date, end_date, filter_rating, sort_by, sort_order):
+def update_table(search_title, filter_show, start_date, end_date, filter_rating):
     filters = []
     
     # Build filters based on inputs
@@ -174,11 +140,13 @@ def update_table(n_clicks, search_title, filter_show, start_date, end_date, filt
     # Fetch data with filters
     df = fetch_data_from_db(where_clause)
     
-    # Apply sorting
-    if sort_by:
-        df = df.sort_values(by=sort_by, ascending=(sort_order == 'ASC'))
-        
     df['episode_title'] = df['episode_title'].str.split('∙').str[-1]
+    
+    # votes column is ithere 4.7 or 4700, if there are no . devide by 1000, and to both add K
+    df['votes'] = df['votes'].apply(lambda x: f"{x/1000}K" if ".0" in str(x) else f"{x}K")
+    
+    # from "Tue, Sep 28, 1999" to" 1999-09-28"
+    df['air_date'] = pd.to_datetime(df['air_date'], format='%a, %b %d, %Y').dt.strftime('%Y-%m-%d')
 
     return df.to_dict('records')
 
