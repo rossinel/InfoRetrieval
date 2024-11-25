@@ -106,6 +106,7 @@ app.layout = html.Div(
                     },
                     style_data={'backgroundColor': '#ecf0f1', 'color': '#2c3e50'},
                     page_size=20,
+                    page_action='native',
                 )
             ]
         )
