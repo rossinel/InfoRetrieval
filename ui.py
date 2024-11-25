@@ -1,9 +1,8 @@
 import dash
-from dash import dcc, html, Input, Output, State, dash_table
+from dash import dcc, html, Input, Output, State
 import sqlite3
 import pandas as pd
 
-# Initialize Dash app
 app = dash.Dash(__name__)
 app.title = "Episode Browser"
 
@@ -11,10 +10,10 @@ app.title = "Episode Browser"
 def fetch_data_from_db(filters=None):
     conn = sqlite3.connect("episodes.db")
     query = "SELECT * FROM episodes"
-    
+
     if filters:
         query += f" WHERE {filters}"
-    
+
     df = pd.read_sql_query(query, conn)
     conn.close()
     return df
@@ -52,7 +51,6 @@ app.layout = html.Div(
                                 {'label': 'Family Guy', 'value': 'Family Guy'},
                                 {'label': 'South Park', 'value': 'South Park'},
                                 {'label': 'The Simpsons', 'value': 'The Simpsons'},
-                                # Add other shows here if available
                             ],
                             placeholder="Select a show",
                             style={'width': '200px', 'marginRight': '20px'}
@@ -77,53 +75,26 @@ app.layout = html.Div(
             ]
         ),
 
-        # Results table
-         html.Div(
-            children=[
-                dash_table.DataTable(
-                    id='results-table',
-                    columns=[
-                        # {"name": "Image", "id": "image", "presentation": "markdown"},  # Image column
-                        {"name": "Show", "id": "show"},
-                        {"name": "Title", "id": "episode_title"},
-                        {"name": "Air Date", "id": "air_date"},
-                        {"name": "Rating", "id": "rating"},
-                        {"name": "Votes", "id": "votes"},
-                        {"name": "Plot", "id": "plot"},
-                        {"name": "Season", "id": "season"},
-                        {"name": "Episode", "id": "episode"},
-                    ],
-                    # style_table={'overflowX': 'auto'},
-                    style_cell={
-                        'textAlign': 'left',
-                        'padding': '10px',
-                        'whiteSpace': 'normal'
-                    },
-                    style_header={
-                        'backgroundColor': '#2c3e50',
-                        'color': 'white',
-                        'fontWeight': 'bold'
-                    },
-                    style_data={'backgroundColor': '#ecf0f1', 'color': '#2c3e50'},
-                    page_size=20,
-                    page_action='native',
-                )
-            ]
+        # Results container
+        html.Div(
+            id='results-container',
+            style={'display': 'block'}
         )
     ]
 )
+
 # Callbacks
 @app.callback(
-    Output('results-table', 'data'),
+    Output('results-container', 'children'),
     Input('search-title', 'value'),
     Input('filter-show', 'value'),
     Input('filter-date', 'start_date'),
     Input('filter-date', 'end_date'),
     Input('filter-rating', 'value')
 )
-def update_table(search_title, filter_show, start_date, end_date, filter_rating):
+def update_results(search_title, filter_show, start_date, end_date, filter_rating):
     filters = []
-    
+
     # Build filters based on inputs
     if search_title:
         filters.append(f"episode_title LIKE '%{search_title}%'")
@@ -133,26 +104,60 @@ def update_table(search_title, filter_show, start_date, end_date, filter_rating)
         filters.append(f"air_date BETWEEN '{start_date}' AND '{end_date}'")
     if filter_rating:
         filters.append(f"rating >= {filter_rating}")
-    
+
     # Combine filters into a SQL WHERE clause
     where_clause = " AND ".join(filters) if filters else None
-    
+
     # Fetch data with filters
     df = fetch_data_from_db(where_clause)
-    
-    df['episode_title'] = df['episode_title'].str.split('∙').str[-1]
-    
-    # votes column is ithere 4.7 or 4700, if there are no . devide by 1000, and to both add K
-    df['votes'] = df['votes'].apply(lambda x: f"{x/1000}K" if ".0" in str(x) else f"{x}K")
-    
-    # from "Tue, Sep 28, 1999" to" 1999-09-28"
+
+    # Format columns as needed
     df['air_date'] = pd.to_datetime(df['air_date'], format='%a, %b %d, %Y').dt.strftime('%Y-%m-%d')
-    
-    # max 100 px
-    # df['image'] = df['image'].apply(lambda x: f"![Image]({x})" if x else "No Image")
+    df['votes'] = df['votes'].apply(lambda x: f"{x / 1000:.1f}K" if x >= 1000 else f"{x}")
 
+    cards = []
+    for _, row in df.iterrows():
+        card = html.Div(
+            style={
+                'border': '1px solid #dcdcdc',
+                'borderRadius': '10px',
+                'padding': '15px',
+                'backgroundColor': '#ffffff',
+                'marginBottom': '20px',
+                'display': 'block',
+                'width': '100%'
+            },
+            children=[
+                html.Div(
+                    style={'display': 'flex', 'alignItems': 'flex-start'},
+                    children=[
+                        html.Img(
+                            src=row['image'] if 'image' in row and row['image'] else "https://via.placeholder.com/100",
+                            style={
+                                'width': '100px',
+                                'height': 'auto',
+                                'borderRadius': '10px',
+                                'marginRight': '15px'
+                            }
+                        ),
+                        html.Div(
+                            children=[
+                                html.H3(row['episode_title'], style={'color': '#2c3e50', 'margin': '0'}),
+                                html.P(f"Show: {row['show']}", style={'color': '#7f8c8d', 'margin': '5px 0'}),
+                                html.P(f"Air Date: {row['air_date']}", style={'color': '#7f8c8d', 'margin': '5px 0'}),
+                                html.P(f"Rating: {row['rating']} / 10", style={'color': '#7f8c8d', 'margin': '5px 0'}),
+                                html.P(f"Votes: {row['votes']}", style={'color': '#7f8c8d', 'margin': '5px 0'}),
+                                html.P(row['plot'], style={'color': '#34495e', 'margin': '10px 0'}),
+                            ]
+                        )
+                    ]
+                )
+            ]
+        )
+        cards.append(card)
 
-    return df.to_dict('records')
+    return cards
+
 
 # Run app
 if __name__ == '__main__':
