@@ -78,21 +78,22 @@ app.layout = html.Div(
         ),
 
         # Results table
-        html.Div(
+         html.Div(
             children=[
                 dash_table.DataTable(
                     id='results-table',
                     columns=[
+                        # {"name": "Image", "id": "image", "presentation": "markdown"},  # Image column
                         {"name": "Show", "id": "show"},
                         {"name": "Title", "id": "episode_title"},
+                        {"name": "Air Date", "id": "air_date"},
                         {"name": "Rating", "id": "rating"},
                         {"name": "Votes", "id": "votes"},
                         {"name": "Plot", "id": "plot"},
-                        {"name": "Air Date", "id": "air_date"},
                         {"name": "Season", "id": "season"},
                         {"name": "Episode", "id": "episode"},
                     ],
-                    style_table={'overflowX': 'auto'},
+                    # style_table={'overflowX': 'auto'},
                     style_cell={
                         'textAlign': 'left',
                         'padding': '10px',
@@ -105,13 +106,11 @@ app.layout = html.Div(
                     },
                     style_data={'backgroundColor': '#ecf0f1', 'color': '#2c3e50'},
                     page_size=20,
-                    sort_action="native",  # Enable native sorting by clicking column headers
                 )
             ]
         )
     ]
 )
-
 # Callbacks
 @app.callback(
     Output('results-table', 'data'),
@@ -147,6 +146,10 @@ def update_table(search_title, filter_show, start_date, end_date, filter_rating)
     
     # from "Tue, Sep 28, 1999" to" 1999-09-28"
     df['air_date'] = pd.to_datetime(df['air_date'], format='%a, %b %d, %Y').dt.strftime('%Y-%m-%d')
+    
+    # max 100 px
+    # df['image'] = df['image'].apply(lambda x: f"![Image]({x})" if x else "No Image")
+
 
     return df.to_dict('records')
 
