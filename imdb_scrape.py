@@ -42,17 +42,14 @@ def fetch_tv_series_with_selenium(url):
     for item in soup.find_all('li', class_='ipc-metadata-list-summary-item'):
         title_tag = item.find('a', class_='ipc-title-link-wrapper')
         metadata_tag = item.find('div', class_='sc-6ade9358-6 cBtpuV dli-title-metadata')
+        # metadata_items = item.find_all('span', class_='sc-6ade9358-7 exckou dli-title-metadata-item')
         if title_tag and metadata_tag:
             title = title_tag.text.strip()
             imdb_id = title_tag['href'].split('/')[2]
-            metadata_text = metadata_tag.text.strip()
-            num_episodes = None
-            if "eps" in metadata_text:
-                parts = metadata_text.split()
-                for part in parts:
-                    if "eps" in part:
-                        num_episodes = part.replace("eps", "").strip()
-                        break
+            num_episodes = str(metadata_tag).split(' eps')[0].split('>')[-1]
+            # print(f"{num_episodes} episodes")
+            
+            
             series_titles.append({'title': title, 'imdb_id': imdb_id, 'num_episodes': num_episodes})
 
     return series_titles
@@ -117,7 +114,7 @@ def fetch_metadata_and_save_to_db(series_list, db_file):
             print(f"Saved metadata for: {metadata['title']}")
         except Exception as e:
             print(f"Error fetching metadata for {series['title']}: {e}")
-        time.sleep(1)  # Avoid hitting IMDb rate limits
+        # time.sleep(1)  # Avoid hitting IMDb rate limits
 
     conn.commit()
     conn.close()
