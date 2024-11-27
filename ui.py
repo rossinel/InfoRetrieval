@@ -69,6 +69,15 @@ app.layout = html.Div(
                             placeholder='Min Rating',
                             style={'width': '100px', 'marginRight': '20px'}
                         ),
+                        html.Label("Results per page:", style={'marginRight': '10px'}),
+                        dcc.Input(
+                            id='results-per-page',
+                            type='number',
+                            value=20,
+                            style={'width': '100px'}
+                        )
+                        
+                        
                     ],
                     style={'display': 'flex', 'alignItems': 'center', 'marginTop': '10px'}
                 )
@@ -90,9 +99,10 @@ app.layout = html.Div(
     Input('filter-show', 'value'),
     Input('filter-date', 'start_date'),
     Input('filter-date', 'end_date'),
-    Input('filter-rating', 'value')
+    Input('filter-rating', 'value'),
+    Input('results-per-page', 'value'),
 )
-def update_results(search_title, filter_show, start_date, end_date, filter_rating):
+def update_results(search_title, filter_show, start_date, end_date, filter_rating, results_per_page):
     filters = []
     params = []
 
@@ -117,11 +127,13 @@ def update_results(search_title, filter_show, start_date, end_date, filter_ratin
     df = fetch_data_from_db(where_clause, params)
 
     # Format columns as needed
-    df['air_date'] = pd.to_datetime(df['air_date'], format='%a, %b %d, %Y').dt.strftime('%Y-%m-%d')
+    # df['air_date'] = pd.to_datetime(df['air_date'], format='%a, %b %d, %Y').dt.strftime('%Y-%m-%d')
     df['votes'] = df['votes'].apply(lambda x: f"{x / 1000:.1f}K" if x >= 1000 else f"{x}")
 
     cards = []
     for _, row in df.iterrows():
+        if len(cards) >= results_per_page:
+            break
         # Fetch similar episodes (up to 3) from the same show
         conn = sqlite3.connect("episodes.db")
         similar_episodes_query = """
@@ -133,11 +145,6 @@ def update_results(search_title, filter_show, start_date, end_date, filter_ratin
         params_similar = (row['show'], row['episode_title'])
         similar_episodes_df = pd.read_sql_query(similar_episodes_query, conn, params=params_similar)
         conn.close()
-
-        # Format the air_date for similar episodes
-        similar_episodes_df['air_date'] = pd.to_datetime(
-            similar_episodes_df['air_date'], format='%a, %b %d, %Y'
-        ).dt.strftime('%Y-%m-%d')
 
         # Create suggestions list
         suggestions = []
