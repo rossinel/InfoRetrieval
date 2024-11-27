@@ -7,12 +7,17 @@ app = dash.Dash(__name__)
 app.title = "Episode Browser"
 
 # Connect to SQLite database and fetch initial data
-def fetch_data_from_db(filters=None, params=None):
+def fetch_data_from_db(filters=None, params=None, limit=None, offset=None):
     conn = sqlite3.connect("episodes.db")
     query = "SELECT * FROM episodes"
 
     if filters:
         query += f" WHERE {filters}"
+
+    if limit is not None:
+        query += f" LIMIT {limit}"
+        if offset is not None:
+            query += f" OFFSET {offset}"
 
     df = pd.read_sql_query(query, conn, params=params)
     conn.close()
@@ -73,13 +78,22 @@ app.layout = html.Div(
                         dcc.Input(
                             id='results-per-page',
                             type='number',
-                            value=20,
+                            value=5,
+                            min=1,
                             style={'width': '100px'}
-                        )
-                        
-                        
+                        ),
                     ],
                     style={'display': 'flex', 'alignItems': 'center', 'marginTop': '10px'}
+                ),
+
+                # button to move between pages
+                html.Div(
+                    children=[
+                        html.Button('Previous', id='prev-page', n_clicks=0),
+                        html.Span(id='page-number', style={'margin': '0 20px'}),
+                        html.Button('Next', id='next-page', n_clicks=0),
+                    ],
+                    style={'display': 'flex', 'alignItems': 'center', 'marginTop': '20px'}
                 )
             ]
         ),
@@ -88,11 +102,43 @@ app.layout = html.Div(
         html.Div(
             id='results-container',
             style={'display': 'block'}
-        )
+        ),
     ]
 )
 
+app.layout.children.append(html.Div(id='current-page', style={'display': 'none'}))
+
 # Callbacks
+@app.callback(
+    Output('current-page', 'children'),
+    Input('prev-page', 'n_clicks'),
+    Input('next-page', 'n_clicks'),
+    State('current-page', 'children')
+)
+def update_page_number(prev_clicks, next_clicks, current_page):
+    ctx = dash.callback_context
+
+    if not ctx.triggered or current_page is None:
+        return 1
+
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    current_page = int(current_page)
+
+    if button_id == 'prev-page' and current_page > 1:
+        current_page -= 1
+    elif button_id == 'next-page':
+        current_page += 1
+
+    return current_page
+
+@app.callback(
+    Output('page-number', 'children'),
+    Input('current-page', 'children')
+)
+def display_page_number(current_page):
+    return f"Page {current_page}" if current_page else "Page 1"
+
 @app.callback(
     Output('results-container', 'children'),
     Input('search-title', 'value'),
@@ -101,8 +147,9 @@ app.layout = html.Div(
     Input('filter-date', 'end_date'),
     Input('filter-rating', 'value'),
     Input('results-per-page', 'value'),
+    Input('current-page', 'children')
 )
-def update_results(search_title, filter_show, start_date, end_date, filter_rating, results_per_page):
+def update_results(search_title, filter_show, start_date, end_date, filter_rating, results_per_page, current_page):
     filters = []
     params = []
 
@@ -123,11 +170,17 @@ def update_results(search_title, filter_show, start_date, end_date, filter_ratin
     # Combine filters into a SQL WHERE clause
     where_clause = " AND ".join(filters) if filters else None
 
-    # Fetch data with filters
-    df = fetch_data_from_db(where_clause, params)
+    # Calculate LIMIT and OFFSET for pagination
+    if results_per_page is None or results_per_page < 1:
+        results_per_page = 5  # Default value
+    if current_page is None:
+        current_page = 1
 
-    # Format columns as needed
-    # df['air_date'] = pd.to_datetime(df['air_date'], format='%a, %b %d, %Y').dt.strftime('%Y-%m-%d')
+    limit = results_per_page
+    offset = (int(current_page) - 1) * int(results_per_page)
+
+    # Fetch data with filters, limit, and offset
+    df = fetch_data_from_db(where_clause, params, limit=limit, offset=offset)
 
     def format_votes(vote):
         try:
@@ -145,8 +198,6 @@ def update_results(search_title, filter_show, start_date, end_date, filter_ratin
 
     cards = []
     for _, row in df.iterrows():
-        if len(cards) >= results_per_page:
-            break
         # Fetch similar episodes (up to 3) from the same show
         conn = sqlite3.connect("episodes.db")
         similar_episodes_query = """
@@ -264,7 +315,6 @@ def update_results(search_title, filter_show, start_date, end_date, filter_ratin
         cards.append(card)
 
     return cards
-
 
 # Run app
 if __name__ == '__main__':
