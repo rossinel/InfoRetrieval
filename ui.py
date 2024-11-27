@@ -128,7 +128,20 @@ def update_results(search_title, filter_show, start_date, end_date, filter_ratin
 
     # Format columns as needed
     # df['air_date'] = pd.to_datetime(df['air_date'], format='%a, %b %d, %Y').dt.strftime('%Y-%m-%d')
-    df['votes'] = df['votes'].apply(lambda x: f"{x / 1000:.1f}K" if x >= 1000 else f"{x}")
+
+    def format_votes(vote):
+        try:
+            if isinstance(vote, float) and vote >= 1000:
+                return f"{vote // 1000}K"
+            elif isinstance(vote, float) and vote <= 100:
+                return f"{vote}K"
+            else:
+                return int(vote)
+        except:
+            return vote
+
+    # Apply the formatting function to the votes column
+    df['votes'] = df['votes'].apply(format_votes)
 
     cards = []
     for _, row in df.iterrows():
