@@ -35,11 +35,11 @@ app.layout = html.Div(
                 # Search bar
                 html.Div(
                     children=[
-                        html.Label("Search by Title:", style={'marginRight': '10px'}),
+                        html.Label("Search by Title or Plot:", style={'marginRight': '10px'}),
                         dcc.Input(
                             id='search-title',
                             type='text',
-                            placeholder='Enter title...',
+                            placeholder='Enter keyword...',
                             style={'width': '300px', 'marginRight': '20px'}
                         ),
                     ],
@@ -78,7 +78,7 @@ app.layout = html.Div(
                         dcc.Input(
                             id='results-per-page',
                             type='number',
-                            value=5,
+                            value=20,
                             min=1,
                             style={'width': '100px'}
                         ),
@@ -86,7 +86,7 @@ app.layout = html.Div(
                     style={'display': 'flex', 'alignItems': 'center', 'marginTop': '10px'}
                 ),
 
-                # button to move between pages
+                # Buttons to move between pages
                 html.Div(
                     children=[
                         html.Button('Previous', id='prev-page', n_clicks=0),
@@ -155,15 +155,21 @@ def update_results(search_title, filter_show, start_date, end_date, filter_ratin
 
     # Build filters based on inputs
     if search_title:
-        filters.append("episode_title LIKE ?")
+        # Search for the keyword in the episode title or plot
+        filters.append("(episode_title LIKE ? OR plot LIKE ?)")
         params.append(f"%{search_title}%")
+        params.append(f"%{search_title}%")
+
     if filter_show:
+        # Filter by show name
         filters.append("show = ?")
         params.append(filter_show)
     if start_date and end_date:
+        # Filter by release date
         filters.append("air_date BETWEEN ? AND ?")
         params.extend([start_date, end_date])
     if filter_rating:
+        # Filter by minimum rating
         filters.append("rating >= ?")
         params.append(filter_rating)
 
@@ -185,9 +191,9 @@ def update_results(search_title, filter_show, start_date, end_date, filter_ratin
     def format_votes(vote):
         try:
             if isinstance(vote, float) and vote >= 1000:
-                return f"{vote // 1000}K"
+                return f"{int(vote // 1000)}K"
             elif isinstance(vote, float) and vote <= 100:
-                return f"{vote}K"
+                return f"{int(vote)}K"
             else:
                 return int(vote)
         except:
@@ -316,6 +322,5 @@ def update_results(search_title, filter_show, start_date, end_date, filter_ratin
 
     return cards
 
-# Run app
 if __name__ == '__main__':
     app.run_server(debug=True)
