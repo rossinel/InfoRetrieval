@@ -6,6 +6,7 @@ import pandas as pd
 app = dash.Dash(__name__)
 app.title = "Episode Browser"
 
+
 # Connect to SQLite database and fetch initial data
 def fetch_data_from_db(filters=None, params=None, limit=None, offset=None):
     conn = sqlite3.connect("episodes.db")
@@ -22,6 +23,19 @@ def fetch_data_from_db(filters=None, params=None, limit=None, offset=None):
     df = pd.read_sql_query(query, conn, params=params)
     conn.close()
     return df
+
+
+def format_votes(vote):
+    try:
+        if isinstance(vote, float) and vote >= 1000:
+            return f"{int(vote // 1000)}K"
+        elif isinstance(vote, float) and vote <= 100:
+            return f"{int(vote)}K"
+        else:
+            return int(vote)
+    except:
+        return vote
+
 
 # Layout
 app.layout = html.Div(
@@ -74,13 +88,12 @@ app.layout = html.Div(
                             placeholder='Min Rating',
                             style={'width': '100px', 'marginRight': '20px'}
                         ),
-                        html.Label("Results per page:", style={'marginRight': '10px'}),
+                        html.Label("Filter by Season:", style={'marginRight': '10px'}),
                         dcc.Input(
-                            id='results-per-page',
+                            id='filter-season',
                             type='number',
-                            value=20,
-                            min=1,
-                            style={'width': '100px'}
+                            placeholder='Season Number',
+                            style={'width': '100px', 'marginRight': '20px'}
                         ),
                     ],
                     style={'display': 'flex', 'alignItems': 'center', 'marginTop': '10px'}
@@ -108,6 +121,7 @@ app.layout = html.Div(
 
 app.layout.children.append(html.Div(id='current-page', style={'display': 'none'}))
 
+
 # Callbacks
 @app.callback(
     Output('current-page', 'children'),
@@ -132,12 +146,14 @@ def update_page_number(prev_clicks, next_clicks, current_page):
 
     return current_page
 
+
 @app.callback(
     Output('page-number', 'children'),
     Input('current-page', 'children')
 )
 def display_page_number(current_page):
     return f"Page {current_page}" if current_page else "Page 1"
+
 
 @app.callback(
     Output('results-container', 'children'),
@@ -146,39 +162,42 @@ def display_page_number(current_page):
     Input('filter-date', 'start_date'),
     Input('filter-date', 'end_date'),
     Input('filter-rating', 'value'),
-    Input('results-per-page', 'value'),
-    Input('current-page', 'children')
+    Input('current-page', 'children'),
+    Input('filter-season', 'value')  # New input for season filter
 )
-def update_results(search_title, filter_show, start_date, end_date, filter_rating, results_per_page, current_page):
+def update_results(search_title, filter_show, start_date, end_date, filter_rating, current_page, filter_season):
     filters = []
     params = []
 
     # Build filters based on inputs
     if search_title:
-        # Search for the keyword in the episode title or plot
         filters.append("(episode_title LIKE ? OR plot LIKE ?)")
         params.append(f"%{search_title}%")
         params.append(f"%{search_title}%")
 
     if filter_show:
-        # Filter by show name
         filters.append("show = ?")
         params.append(filter_show)
+
     if start_date and end_date:
-        # Filter by release date
         filters.append("air_date BETWEEN ? AND ?")
         params.extend([start_date, end_date])
+
     if filter_rating:
-        # Filter by minimum rating
         filters.append("rating >= ?")
         params.append(filter_rating)
+
+    if filter_season:  # Add filter for season number
+        filters.append("season = ?")
+        params.append(filter_season)
 
     # Combine filters into a SQL WHERE clause
     where_clause = " AND ".join(filters) if filters else None
 
+    # Set results per page to 50
+    results_per_page = 50
+
     # Calculate LIMIT and OFFSET for pagination
-    if results_per_page is None or results_per_page < 1:
-        results_per_page = 5  # Default value
     if current_page is None:
         current_page = 1
 
@@ -188,19 +207,9 @@ def update_results(search_title, filter_show, start_date, end_date, filter_ratin
     # Fetch data with filters, limit, and offset
     df = fetch_data_from_db(where_clause, params, limit=limit, offset=offset)
 
-    def format_votes(vote):
-        try:
-            if isinstance(vote, float) and vote >= 1000:
-                return f"{int(vote // 1000)}K"
-            elif isinstance(vote, float) and vote <= 100:
-                return f"{int(vote)}K"
-            else:
-                return int(vote)
-        except:
-            return vote
-
-    # Apply the formatting function to the votes column
-    df['votes'] = df['votes'].apply(format_votes)
+    # Format votes column
+    if 'votes' in df.columns:
+        df['votes'] = df['votes'].apply(format_votes)
 
     cards = []
     for _, row in df.iterrows():
@@ -258,7 +267,8 @@ def update_results(search_title, filter_show, start_date, end_date, filter_ratin
                             style={'flex': '2', 'display': 'flex', 'alignItems': 'flex-start'},
                             children=[
                                 html.Img(
-                                    src=row['image'] if 'image' in row and row['image'] else "https://via.placeholder.com/100",
+                                    src=row['image'] if 'image' in row and row[
+                                        'image'] else "https://via.placeholder.com/100",
                                     style={
                                         'width': '100px',
                                         'height': 'auto',
