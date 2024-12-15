@@ -7,11 +7,13 @@ app = dash.Dash(__name__)
 app.title = "Episode Browser"
 
 
-# Connect to SQLite database and fetch initial data
+# =========================
+# Helper Functions
+# =========================
+
 def fetch_data_from_db(filters=None, params=None, limit=None, offset=None):
     conn = sqlite3.connect("episodes.db")
     query = "SELECT * FROM episodes"
-
     if filters:
         query += f" WHERE {filters}"
 
@@ -25,6 +27,7 @@ def fetch_data_from_db(filters=None, params=None, limit=None, offset=None):
     return df
 
 
+# Format votes to be more readable
 def format_votes(vote):
     try:
         if isinstance(vote, float) and vote >= 1000:
@@ -33,11 +36,145 @@ def format_votes(vote):
             return f"{int(vote)}K"
         else:
             return int(vote)
-    except:
+    except Exception:
         return vote
 
 
+# Fetch similar episodes TODO: to modify
+def fetch_similar_episodes(show_name, episode_title, limit=3):
+    conn = sqlite3.connect("episodes.db")
+    query = """
+        SELECT * FROM episodes
+        WHERE show = ? AND episode_title != ?
+        ORDER BY RANDOM()
+        LIMIT ?
+    """
+    similar_df = pd.read_sql_query(query, conn, params=(show_name, episode_title, limit))
+    conn.close()
+    return similar_df
+
+
+# Create a section with similar episodes
+def create_similar_episodes_section(similar_df):
+    suggestions = []
+    for _, sim_row in similar_df.iterrows():
+        suggestions.append(
+            html.Div(
+                children=[
+                    html.P(
+                        sim_row['episode_title'],
+                        style={
+                            'color': '#2c3e50',
+                            'margin': '5px 0',
+                            'fontWeight': 'bold',
+                            'fontSize': '14px'
+                        }
+                    ),
+                    html.P(
+                        f"Air Date: {sim_row['air_date']}",
+                        style={
+                            'color': '#7f8c8d',
+                            'margin': '0 0 10px 0',
+                            'fontSize': '12px'
+                        }
+                    ),
+                ],
+                style={'marginBottom': '10px'}
+            )
+        )
+    return suggestions
+
+
+# Create a card for each episode
+def create_episode_card(row):
+    # Fetch similar episodes
+    similar_episodes_df = fetch_similar_episodes(row['show'], row['episode_title'])
+    suggestions = create_similar_episodes_section(similar_episodes_df)
+
+    # Build the card layout
+    card = html.Div(
+        style={
+            'border': '1px solid #dcdcdc',
+            'borderRadius': '10px',
+            'padding': '15px',
+            'backgroundColor': '#ffffff',
+            'marginBottom': '20px',
+            'display': 'block',
+            'width': '100%'
+        },
+        children=[
+            html.Div(
+                style={'display': 'flex', 'alignItems': 'flex-start'},
+                children=[
+                    # Left column: main content
+                    html.Div(
+                        style={'flex': '2', 'display': 'flex', 'alignItems': 'flex-start'},
+                        children=[
+                            html.Img(
+                                src=row['image'] if 'image' in row and row['image'] else "https://via.placeholder.com/100",
+                                style={
+                                    'width': '100px',
+                                    'height': 'auto',
+                                    'borderRadius': '10px',
+                                    'marginRight': '15px'
+                                }
+                            ),
+                            html.Div(
+                                children=[
+                                    html.H3(
+                                        row['episode_title'],
+                                        style={'color': '#2c3e50', 'margin': '0'}
+                                    ),
+                                    html.P(
+                                        f"Show: {row['show']}",
+                                        style={'color': '#7f8c8d', 'margin': '5px 0'}
+                                    ),
+                                    html.P(
+                                        f"Air Date: {row['air_date']}",
+                                        style={'color': '#7f8c8d', 'margin': '5px 0'}
+                                    ),
+                                    html.P(
+                                        [
+                                            html.Span(
+                                                "★",
+                                                style={'color': 'gold', 'marginRight': '5px', 'fontSize': '16px'}
+                                            ),
+                                            f"{row['rating']} / 10"
+                                        ],
+                                        style={'color': '#7f8c8d', 'margin': '5px 0'}
+                                    ),
+                                    html.P(
+                                        f"Votes: {row['votes']}",
+                                        style={'color': '#7f8c8d', 'margin': '5px 0'}
+                                    ),
+                                    html.P(
+                                        row['plot'],
+                                        style={'color': '#34495e', 'margin': '10px 0'}
+                                    ),
+                                ]
+                            )
+                        ]
+                    ),
+                    # Right column: suggestions
+                    html.Div(
+                        children=[
+                            html.H4("Similar Episodes", style={'color': '#2c3e50', 'margin': '0 0 10px 0'}),
+                            *suggestions
+                        ],
+                        style={'flex': '1', 'marginLeft': '20px'}
+                    ),
+                ]
+            )
+        ]
+    )
+
+    return card
+
+
+# =========================
 # Layout
+# =========================
+
 app.layout = html.Div(
     style={'fontFamily': 'Arial, sans-serif', 'margin': '20px'},
     children=[
@@ -46,8 +183,9 @@ app.layout = html.Div(
         html.Div(
             style={'marginBottom': '20px'},
             children=[
-                # Search bar
+                # Search Bar
                 html.Div(
+                    style={'display': 'flex', 'alignItems': 'center'},
                     children=[
                         html.Label("Search by Title or Plot:", style={'marginRight': '10px'}),
                         dcc.Input(
@@ -56,12 +194,12 @@ app.layout = html.Div(
                             placeholder='Enter keyword...',
                             style={'width': '300px', 'marginRight': '20px'}
                         ),
-                    ],
-                    style={'display': 'flex', 'alignItems': 'center'}
+                    ]
                 ),
 
                 # Filters
                 html.Div(
+                    style={'display': 'flex', 'alignItems': 'center', 'marginTop': '10px'},
                     children=[
                         html.Label("Filter by Show:", style={'marginRight': '10px'}),
                         dcc.Dropdown(
@@ -95,34 +233,31 @@ app.layout = html.Div(
                             placeholder='Season Number',
                             style={'width': '100px', 'marginRight': '20px'}
                         ),
-                    ],
-                    style={'display': 'flex', 'alignItems': 'center', 'marginTop': '10px'}
+                    ]
                 ),
 
-                # Buttons to move between pages
+                # Pagination Buttons
                 html.Div(
+                    style={'display': 'flex', 'alignItems': 'center', 'marginTop': '20px'},
                     children=[
                         html.Button('Previous', id='prev-page', n_clicks=0),
                         html.Span(id='page-number', style={'margin': '0 20px'}),
                         html.Button('Next', id='next-page', n_clicks=0),
-                    ],
-                    style={'display': 'flex', 'alignItems': 'center', 'marginTop': '20px'}
+                    ]
                 )
             ]
         ),
 
-        # Results container
-        html.Div(
-            id='results-container',
-            style={'display': 'block'}
-        ),
+        html.Div(id='results-container', style={'display': 'block'}),
+        html.Div(id='current-page', style={'display': 'none'})
     ]
 )
 
-app.layout.children.append(html.Div(id='current-page', style={'display': 'none'}))
 
-
+# =========================
 # Callbacks
+# =========================
+
 @app.callback(
     Output('current-page', 'children'),
     Input('prev-page', 'n_clicks'),
@@ -130,15 +265,11 @@ app.layout.children.append(html.Div(id='current-page', style={'display': 'none'}
     State('current-page', 'children')
 )
 def update_page_number(prev_clicks, next_clicks, current_page):
-    ctx = dash.callback_context
-
-    if not ctx.triggered or current_page is None:
-        return 1
-
-    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    if current_page is None:
+        current_page = 1
+    button_id = dash.callback_context.triggered[0]['prop_id'].split('.')[0]
 
     current_page = int(current_page)
-
     if button_id == 'prev-page' and current_page > 1:
         current_page -= 1
     elif button_id == 'next-page':
@@ -163,7 +294,7 @@ def display_page_number(current_page):
     Input('filter-date', 'end_date'),
     Input('filter-rating', 'value'),
     Input('current-page', 'children'),
-    Input('filter-season', 'value')  # New input for season filter
+    Input('filter-season', 'value')
 )
 def update_results(search_title, filter_show, start_date, end_date, filter_rating, current_page, filter_season):
     filters = []
@@ -181,156 +312,35 @@ def update_results(search_title, filter_show, start_date, end_date, filter_ratin
 
     if start_date and end_date:
         filters.append("air_date BETWEEN ? AND ?")
-        params.extend([start_date, end_date])
+        params += [start_date, end_date]
 
     if filter_rating:
         filters.append("rating >= ?")
         params.append(filter_rating)
 
-    if filter_season:  # Add filter for season number
+    if filter_season:
         filters.append("season = ?")
         params.append(filter_season)
 
-    # Combine filters into a SQL WHERE clause
     where_clause = " AND ".join(filters) if filters else None
 
-    # Set results per page to 50
-    results_per_page = 50
-
-    # Calculate LIMIT and OFFSET for pagination
-    if current_page is None:
+    if not current_page:
         current_page = 1
 
+    results_per_page = 50
     limit = results_per_page
     offset = (int(current_page) - 1) * int(results_per_page)
 
     # Fetch data with filters, limit, and offset
     df = fetch_data_from_db(where_clause, params, limit=limit, offset=offset)
 
-    # Format votes column
     if 'votes' in df.columns:
         df['votes'] = df['votes'].apply(format_votes)
 
-    cards = []
-    for _, row in df.iterrows():
-        # Fetch similar episodes (up to 3) from the same show
-        conn = sqlite3.connect("episodes.db")
-        similar_episodes_query = """
-            SELECT * FROM episodes
-            WHERE show = ? AND episode_title != ?
-            ORDER BY RANDOM()
-            LIMIT 3
-        """
-        params_similar = (row['show'], row['episode_title'])
-        similar_episodes_df = pd.read_sql_query(similar_episodes_query, conn, params=params_similar)
-        conn.close()
-
-        # Create suggestions list
-        suggestions = []
-        for _, sim_row in similar_episodes_df.iterrows():
-            suggestions.append(
-                html.Div(
-                    children=[
-                        html.P(sim_row['episode_title'], style={
-                            'color': '#2c3e50',
-                            'margin': '5px 0',
-                            'fontWeight': 'bold',
-                            'fontSize': '14px'
-                        }),
-                        html.P(f"Air Date: {sim_row['air_date']}", style={
-                            'color': '#7f8c8d',
-                            'margin': '0 0 10px 0',
-                            'fontSize': '12px'
-                        }),
-                    ],
-                    style={'marginBottom': '10px'}
-                )
-            )
-
-        # Build the card
-        card = html.Div(
-            style={
-                'border': '1px solid #dcdcdc',
-                'borderRadius': '10px',
-                'padding': '15px',
-                'backgroundColor': '#ffffff',
-                'marginBottom': '20px',
-                'display': 'block',
-                'width': '100%'
-            },
-            children=[
-                html.Div(
-                    style={'display': 'flex', 'alignItems': 'flex-start'},
-                    children=[
-                        # Left column: main content
-                        html.Div(
-                            style={'flex': '2', 'display': 'flex', 'alignItems': 'flex-start'},
-                            children=[
-                                html.Img(
-                                    src=row['image'] if 'image' in row and row[
-                                        'image'] else "https://via.placeholder.com/100",
-                                    style={
-                                        'width': '100px',
-                                        'height': 'auto',
-                                        'borderRadius': '10px',
-                                        'marginRight': '15px'
-                                    }
-                                ),
-                                html.Div(
-                                    children=[
-                                        html.H3(row['episode_title'], style={
-                                            'color': '#2c3e50',
-                                            'margin': '0'
-                                        }),
-                                        html.P(f"Show: {row['show']}", style={
-                                            'color': '#7f8c8d',
-                                            'margin': '5px 0'
-                                        }),
-                                        html.P(f"Air Date: {row['air_date']}", style={
-                                            'color': '#7f8c8d',
-                                            'margin': '5px 0'
-                                        }),
-                                        html.P(
-                                            [
-                                                html.Span("★", style={
-                                                    'color': 'gold',
-                                                    'marginRight': '5px',
-                                                    'fontSize': '16px'
-                                                }),
-                                                f"{row['rating']} / 10"
-                                            ],
-                                            style={'color': '#7f8c8d', 'margin': '5px 0'}
-                                        ),
-                                        html.P(f"Votes: {row['votes']}", style={
-                                            'color': '#7f8c8d',
-                                            'margin': '5px 0'
-                                        }),
-                                        html.P(row['plot'], style={
-                                            'color': '#34495e',
-                                            'margin': '10px 0'
-                                        }),
-                                    ]
-                                )
-                            ]
-                        ),
-                        # Right column: suggestions
-                        html.Div(
-                            children=[
-                                html.H4("Similar Episodes", style={
-                                    'color': '#2c3e50',
-                                    'margin': '0 0 10px 0'
-                                }),
-                                *suggestions
-                            ],
-                            style={'flex': '1', 'marginLeft': '20px'}
-                        ),
-                    ]
-                )
-            ]
-        )
-        cards.append(card)
-
+    # Create a card for each episode
+    cards = [create_episode_card(row) for _, row in df.iterrows()]
     return cards
+
 
 if __name__ == '__main__':
     app.run_server(debug=True)
