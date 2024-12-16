@@ -26,8 +26,7 @@ def fetch_data_from_db(filters=None, params=None, limit=None, offset=None):
     conn.close()
     return df
 
-
-# Format votes to be more readable
+# Function to format votes in a uniform way
 def format_votes(vote):
     try:
         if isinstance(vote, float) and vote >= 1000:
@@ -40,7 +39,6 @@ def format_votes(vote):
         return vote
 
 
-# Fetch similar episodes TODO: to modify
 def fetch_similar_episodes(show_name, episode_title, limit=3):
     conn = sqlite3.connect("episodes.db")
     query = """
@@ -54,7 +52,6 @@ def fetch_similar_episodes(show_name, episode_title, limit=3):
     return similar_df
 
 
-# Create a section with similar episodes
 def create_similar_episodes_section(similar_df):
     suggestions = []
     for _, sim_row in similar_df.iterrows():
@@ -85,13 +82,11 @@ def create_similar_episodes_section(similar_df):
     return suggestions
 
 
-# Create a card for each episode
 def create_episode_card(row):
     # Fetch similar episodes
     similar_episodes_df = fetch_similar_episodes(row['show'], row['episode_title'])
     suggestions = create_similar_episodes_section(similar_episodes_df)
 
-    # Build the card layout
     card = html.Div(
         style={
             'border': '1px solid #dcdcdc',
@@ -167,7 +162,6 @@ def create_episode_card(row):
             )
         ]
     )
-
     return card
 
 
@@ -178,30 +172,57 @@ def create_episode_card(row):
 app.layout = html.Div(
     style={'fontFamily': 'Arial, sans-serif', 'margin': '20px'},
     children=[
-        html.H1("Episode Browser", style={'textAlign': 'center', 'color': '#2c3e50'}),
+        html.H1(
+            "Episode Browser",
+            style={'textAlign': 'center', 'color': '#2c3e50', 'marginBottom': '30px'}
+        ),
 
+        # Search Bar - larger and centered
         html.Div(
-            style={'marginBottom': '20px'},
+            style={
+                'display': 'flex',
+                'justifyContent': 'center',
+                'alignItems': 'center',
+                'marginBottom': '20px'
+            },
             children=[
-                # Search Bar
-                html.Div(
-                    style={'display': 'flex', 'alignItems': 'center'},
-                    children=[
-                        html.Label("Search by Title or Plot:", style={'marginRight': '10px'}),
-                        dcc.Input(
-                            id='search-title',
-                            type='text',
-                            placeholder='Enter keyword...',
-                            style={'width': '300px', 'marginRight': '20px'}
-                        ),
-                    ]
+                html.Label(
+                    "Search by Title or Plot:",
+                    style={'marginRight': '10px', 'fontSize': '18px'}
                 ),
+                dcc.Input(
+                    id='search-title',
+                    type='text',
+                    placeholder='Enter keyword...',
+                    style={
+                        'width': '500px',
+                        'fontSize': '16px',
+                        'padding': '10px'
+                    }
+                ),
+            ]
+        ),
 
-                # Filters
+        # Filters Section
+        html.Div(
+            style={
+                'display': 'flex',
+                'alignItems': 'center',
+                'flexWrap': 'wrap',
+                'justifyContent': 'center',
+                'gap': '20px',
+                'marginBottom': '20px'
+            },
+            children=[
+                # Filter by Show
                 html.Div(
-                    style={'display': 'flex', 'alignItems': 'center', 'marginTop': '10px'},
+                    style={
+                        'display': 'flex',
+                        'alignItems': 'center',
+                        'gap': '10px'
+                    },
                     children=[
-                        html.Label("Filter by Show:", style={'marginRight': '10px'}),
+                        html.Label("Filter by Show:", style={'fontSize': '16px'}),
                         dcc.Dropdown(
                             id='filter-show',
                             options=[
@@ -210,41 +231,103 @@ app.layout = html.Div(
                                 {'label': 'The Simpsons', 'value': 'The Simpsons'},
                             ],
                             placeholder="Select a show",
-                            style={'width': '200px', 'marginRight': '20px'}
-                        ),
-                        html.Label("Filter by Release Date:", style={'marginRight': '10px'}),
-                        dcc.DatePickerRange(
-                            id='filter-date',
-                            start_date_placeholder_text="Start Date",
-                            end_date_placeholder_text="End Date",
-                            style={'marginRight': '20px'}
-                        ),
-                        html.Label("Filter by Rating:", style={'marginRight': '10px'}),
-                        dcc.Input(
-                            id='filter-rating',
-                            type='number',
-                            placeholder='Min Rating',
-                            style={'width': '100px', 'marginRight': '20px'}
-                        ),
-                        html.Label("Filter by Season:", style={'marginRight': '10px'}),
-                        dcc.Input(
-                            id='filter-season',
-                            type='number',
-                            placeholder='Season Number',
-                            style={'width': '100px', 'marginRight': '20px'}
+                            style={
+                                'height': '40px',
+                                'lineHeight': '30px',
+                                'border': '1px solid #dcdcdc',
+                                'borderRadius': '5px',
+                                'width': '200px',
+                                'fontSize': '16px',
+                                'boxSizing': 'border-box',
+                                'backgroundColor': '#fff'
+                            }
                         ),
                     ]
                 ),
 
-                # Pagination Buttons
+                # Filter by Release Date
                 html.Div(
-                    style={'display': 'flex', 'alignItems': 'center', 'marginTop': '20px'},
+                    style={
+                        'display': 'flex',
+                        'alignItems': 'center',
+                        'gap': '10px'
+                    },
                     children=[
-                        html.Button('Previous', id='prev-page', n_clicks=0),
-                        html.Span(id='page-number', style={'margin': '0 20px'}),
-                        html.Button('Next', id='next-page', n_clicks=0),
+                        html.Label("Filter by Release Date:", style={'fontSize': '16px'}),
+                        dcc.DatePickerRange(
+                            id='filter-date',
+                            start_date_placeholder_text="Start Date",
+                            end_date_placeholder_text="End Date",
+                            style={
+                                'height': '45px',
+                                'border': '1px solid #dcdcdc',
+                                'borderRadius': '5px',
+                                'boxSizing': 'border-box',
+                                'fontSize': '16px',
+                                'backgroundColor': '#fff'
+                            }
+                        ),
                     ]
-                )
+                ),
+
+                # Filter by Rating
+                html.Div(
+                    style={'display': 'flex', 'alignItems': 'center', 'gap': '10px'},
+                    children=[
+                        html.Label("Min Rating:", style={'fontSize': '16px'}),
+                        dcc.Input(
+                            id='filter-rating',
+                            type='number',
+                            placeholder='Min Rating',
+                            style={
+                                'height': '45px',
+                                'border': '1px solid #dcdcdc',
+                                'borderRadius': '5px',
+                                'padding': '0 10px',
+                                'fontSize': '16px',
+                                'boxSizing': 'border-box'
+                            }
+                        ),
+                    ]
+                ),
+
+                # Filter by Season
+                html.Div(
+                    style={'display': 'flex', 'alignItems': 'center', 'gap': '10px'},
+                    children=[
+                        html.Label("Filter by Season:", style={'fontSize': '16px'}),
+                        dcc.Input(
+                            id='filter-season',
+                            type='number',
+                            placeholder='Season Number',
+                            style={
+                                'height': '45px',
+                                'border': '1px solid #dcdcdc',
+                                'borderRadius': '5px',
+                                'padding': '0 10px',
+                                'fontSize': '16px',
+                                'boxSizing': 'border-box'
+                            }
+                        ),
+                    ]
+                ),
+            ]
+        ),
+
+        # Pagination Buttons
+        html.Div(
+            style={
+                'display': 'flex',
+                'alignItems': 'center',
+                'marginTop': '20px',
+                'justifyContent': 'center',
+                'gap': '20px',
+                'marginBottom': '20px'
+            },
+            children=[
+                html.Button('Previous', id='prev-page', n_clicks=0),
+                html.Span(id='page-number'),
+                html.Button('Next', id='next-page', n_clicks=0),
             ]
         ),
 
@@ -314,11 +397,11 @@ def update_results(search_title, filter_show, start_date, end_date, filter_ratin
         filters.append("air_date BETWEEN ? AND ?")
         params += [start_date, end_date]
 
-    if filter_rating:
+    if filter_rating is not None:
         filters.append("rating >= ?")
         params.append(filter_rating)
 
-    if filter_season:
+    if filter_season is not None:
         filters.append("season = ?")
         params.append(filter_season)
 
