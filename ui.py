@@ -177,7 +177,7 @@ app.layout = html.Div(
             style={'textAlign': 'center', 'color': '#2c3e50', 'marginBottom': '30px'}
         ),
 
-        # Search Bar - larger and centered
+        # Search Bar
         html.Div(
             style={
                 'display': 'flex',
@@ -197,7 +197,11 @@ app.layout = html.Div(
                     style={
                         'width': '500px',
                         'fontSize': '16px',
-                        'padding': '10px'
+                        'padding': '10px',
+                        'border': '2px solid #dcdcdc',
+                        'height': '38px',
+                        'borderRadius': '5px',
+
                     }
                 ),
             ]
@@ -261,7 +265,6 @@ app.layout = html.Div(
                             style={
                                 'height': '45px',
                                 'border': '1px solid #dcdcdc',
-                                'borderRadius': '5px',
                                 'boxSizing': 'border-box',
                                 'fontSize': '16px',
                                 'backgroundColor': '#fff'
