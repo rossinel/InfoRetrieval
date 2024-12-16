@@ -1,6 +1,8 @@
 import dash
 from dash import dcc, html, Input, Output, State
 import sqlite3
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 import pandas as pd
 
 app = dash.Dash(__name__)
@@ -39,17 +41,33 @@ def format_votes(vote):
         return vote
 
 
-def fetch_similar_episodes(show_name, episode_title, limit=3):
-    conn = sqlite3.connect("episodes.db")
+
+
+def find_similar_plots(database_path="episodes.db", input_plot='', show_name='', plot_id=None, top_n=3):
+    conn = sqlite3.connect(database_path)
+    
     query = """
         SELECT * FROM episodes
-        WHERE show = ? AND episode_title != ?
-        ORDER BY RANDOM()
-        LIMIT ?
-    """
-    similar_df = pd.read_sql_query(query, conn, params=(show_name, episode_title, limit))
+        WHERE show = ?
+    """ 
+    plots_df = pd.read_sql_query(query, conn, params = (show_name,))
     conn.close()
-    return similar_df
+    
+    all_plots = plots_df['plot'].tolist()
+    all_plots.insert(0, input_plot)  # Add input plot to the beginning
+    
+    vectorizer = TfidfVectorizer(stop_words='english')
+    tfidf_matrix = vectorizer.fit_transform(all_plots)
+    
+    similarity_scores = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:]).flatten()
+    
+    plots_df['similarity'] = similarity_scores
+    
+    if plot_id:
+        plots_df = plots_df[plots_df['id'] != plot_id]
+    most_similar_plots = plots_df.sort_values(by='similarity', ascending=False).head(top_n)
+    
+    return most_similar_plots
 
 
 def create_similar_episodes_section(similar_df):
@@ -84,7 +102,7 @@ def create_similar_episodes_section(similar_df):
 
 def create_episode_card(row):
     # Fetch similar episodes
-    similar_episodes_df = fetch_similar_episodes(row['show'], row['episode_title'])
+    similar_episodes_df = find_similar_plots(input_plot=row['plot'], show_name=row['show'], plot_id=row['id'])  
     suggestions = create_similar_episodes_section(similar_episodes_df)
 
     card = html.Div(
@@ -413,7 +431,7 @@ def update_results(search_title, filter_show, start_date, end_date, filter_ratin
     if not current_page:
         current_page = 1
 
-    results_per_page = 50
+    results_per_page = 10
     limit = results_per_page
     offset = (int(current_page) - 1) * int(results_per_page)
 
