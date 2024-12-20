@@ -1,9 +1,9 @@
 import dash
 from dash import dcc, html, Input, Output, State
 import sqlite3
+import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import pandas as pd
 
 app = dash.Dash(__name__)
 app.title = "Episode Browser"
@@ -13,22 +13,17 @@ app.title = "Episode Browser"
 # Helper Functions
 # =========================
 
-def fetch_data_from_db(filters=None, params=None, limit=None, offset=None):
+# the main function used to fetch data from the database
+def fetch_data_from_db(filters=None, params=None):
     conn = sqlite3.connect("episodes.db")
     query = "SELECT * FROM episodes"
     if filters:
         query += f" WHERE {filters}"
-
-    if limit is not None:
-        query += f" LIMIT {limit}"
-        if offset is not None:
-            query += f" OFFSET {offset}"
-
     df = pd.read_sql_query(query, conn, params=params)
     conn.close()
     return df
 
-# Function to format votes in a uniform way
+# this function will format the votes to be more readable
 def format_votes(vote):
     try:
         if isinstance(vote, float) and vote >= 1000:
@@ -41,32 +36,31 @@ def format_votes(vote):
         return vote
 
 
-
-
+# this function will find similar plots based on the input plot and show name
 def find_similar_plots(database_path="episodes.db", input_plot='', show_name='', plot_id=None, top_n=3):
     conn = sqlite3.connect(database_path)
-    
+
     query = """
         SELECT * FROM episodes
         WHERE show = ?
-    """ 
-    plots_df = pd.read_sql_query(query, conn, params = (show_name,))
+    """
+    plots_df = pd.read_sql_query(query, conn, params=(show_name,))
     conn.close()
-    
+
     all_plots = plots_df['plot'].tolist()
     all_plots.insert(0, input_plot)  # Add input plot to the beginning
-    
+
     vectorizer = TfidfVectorizer(stop_words='english')
     tfidf_matrix = vectorizer.fit_transform(all_plots)
-    
+
     similarity_scores = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:]).flatten()
-    
+
     plots_df['similarity'] = similarity_scores
-    
+
     if plot_id:
         plots_df = plots_df[plots_df['id'] != plot_id]
     most_similar_plots = plots_df.sort_values(by='similarity', ascending=False).head(top_n)
-    
+
     return most_similar_plots
 
 
@@ -102,7 +96,7 @@ def create_similar_episodes_section(similar_df):
 
 def create_episode_card(row):
     # Fetch similar episodes
-    similar_episodes_df = find_similar_plots(input_plot=row['plot'], show_name=row['show'], plot_id=row['id'])  
+    similar_episodes_df = find_similar_plots(input_plot=row['plot'], show_name=row['show'], plot_id=row['id'])
     suggestions = create_similar_episodes_section(similar_episodes_df)
 
     card = html.Div(
@@ -205,7 +199,7 @@ app.layout = html.Div(
             },
             children=[
                 html.Label(
-                    "Search by Title or Plot:",
+                    "Search:",
                     style={'marginRight': '10px', 'fontSize': '18px'}
                 ),
                 dcc.Input(
@@ -219,7 +213,6 @@ app.layout = html.Div(
                         'border': '2px solid #dcdcdc',
                         'height': '38px',
                         'borderRadius': '5px',
-
                     }
                 ),
             ]
@@ -366,17 +359,32 @@ app.layout = html.Div(
     Output('current-page', 'children'),
     Input('prev-page', 'n_clicks'),
     Input('next-page', 'n_clicks'),
+    Input('search-title', 'value'),
+    Input('filter-show', 'value'),
+    Input('filter-date', 'start_date'),
+    Input('filter-date', 'end_date'),
+    Input('filter-rating', 'value'),
+    Input('filter-season', 'value'),
     State('current-page', 'children')
 )
-def update_page_number(prev_clicks, next_clicks, current_page):
+def update_page_number(prev_clicks, next_clicks, search_title, filter_show, start_date, end_date, filter_rating, filter_season, current_page):
     if current_page is None:
         current_page = 1
-    button_id = dash.callback_context.triggered[0]['prop_id'].split('.')[0]
 
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return current_page
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    # if it's a filter, reset to page 1
+    if trigger_id in ['search-title', 'filter-show', 'filter-date', 'filter-rating', 'filter-season']:
+        return 1
+
+    # if it's a pagination button, update the page number
     current_page = int(current_page)
-    if button_id == 'prev-page' and current_page > 1:
+    if trigger_id == 'prev-page' and current_page > 1:
         current_page -= 1
-    elif button_id == 'next-page':
+    elif trigger_id == 'next-page':
         current_page += 1
 
     return current_page
@@ -405,11 +413,6 @@ def update_results(search_title, filter_show, start_date, end_date, filter_ratin
     params = []
 
     # Build filters based on inputs
-    if search_title:
-        filters.append("(episode_title LIKE ? OR plot LIKE ?)")
-        params.append(f"%{search_title}%")
-        params.append(f"%{search_title}%")
-
     if filter_show:
         filters.append("show = ?")
         params.append(filter_show)
@@ -431,18 +434,43 @@ def update_results(search_title, filter_show, start_date, end_date, filter_ratin
     if not current_page:
         current_page = 1
 
-    results_per_page = 10
-    limit = results_per_page
-    offset = (int(current_page) - 1) * int(results_per_page)
-
-    # Fetch data with filters, limit, and offset
-    df = fetch_data_from_db(where_clause, params, limit=limit, offset=offset)
+    # Fetch all relevant data
+    df = fetch_data_from_db(where_clause, params)
 
     if 'votes' in df.columns:
         df['votes'] = df['votes'].apply(format_votes)
 
-    # Create a card for each episode
-    cards = [create_episode_card(row) for _, row in df.iterrows()]
+    # If a search_title is given, apply TF-IDF search
+    if search_title and not df.empty:
+
+        # first we combine title and plot into a single text field for searching
+        df['text_for_search'] = df['episode_title'].fillna('') + ' ' + df['plot'].fillna('')
+
+        # then we vectorize all episodes + the query
+        all_docs = df['text_for_search'].tolist()
+        vectorizer = TfidfVectorizer(stop_words='english')
+        tfidf_matrix = vectorizer.fit_transform(all_docs)
+        query_vec = vectorizer.transform([search_title])
+
+        # Compute similarity
+        similarities = cosine_similarity(query_vec, tfidf_matrix).flatten()
+        df['similarity'] = similarities
+
+        # Sort by similarity
+        df = df.sort_values('similarity', ascending=False)
+
+    else:
+        # if there is no search_title, sort by show, season, episode
+        df = df.sort_values(['show', 'season', 'episode'], ascending=[True, True, True])
+
+    # Pagination
+    results_per_page = 10
+    start_idx = (int(current_page) - 1) * results_per_page
+    end_idx = start_idx + results_per_page
+    df_page = df.iloc[start_idx:end_idx]
+
+    # Create cards
+    cards = [create_episode_card(row) for _, row in df_page.iterrows()]
     return cards
 
 
